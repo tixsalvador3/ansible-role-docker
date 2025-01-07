@@ -1,0 +1,122 @@
+---
+- name: Gather variables (Debian / Ubuntu)
+  ansible.builtin.shell:
+  cmd: |
+    dpkg --print-architecture
+  register: archi
+  when: ansible_os_family == 'Debian'
+  changed_when: false
+  tags: docker
+
+- name: Gather variables (Debian / Ubuntu)
+  ansible.builtin.shell:
+  cmd: |
+    lsb_release -i | awk  '{print $3}' | tr '[:upper:]' '[:lower:]'
+  register: flavor
+  when: ansible_os_family == 'Debian'
+  changed_when: false
+  tags: docker
+
+- name: Install required packages (Debian / Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - gnupg
+      - ca-certificates
+      - curl
+      - wget
+      - vim
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Create keyring directory (Debian / Ubuntu)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Check if gpg key exist (Debian / Ubuntu)
+  ansible.builtin.stat:
+    path: /etc/apt/keyrings/docker.gpg
+  register: gpg_file
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Add docker gpg key (Debian / Ubuntu)
+  ansible.builtin.shell:
+    cmd: curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  when: (ansible_os_family == 'Debian') and (gpg_file.stat.exists == False)
+  changed_when: false
+  tags: docker
+
+- name: Change file permission (Debian / Ubuntu)
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.gpg
+    mode: '0644'
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Add repository (Debian / Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: "deb [arch={{ archi.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ flavor.stdout }} {{ ansible_distribution_release }} stable"
+    state: present
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Install docker (Debian / Ubuntu)
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+  tags: docker
+
+- name: Install required packages (RedHat / Centos)
+  ansible.builtin.yum:
+    name:
+      - yum-utils
+      - vim
+    state: present
+  when: ansible_os_family == 'RedHat'
+  tags: docker
+
+- name: Install docker repo (RedHat / Centos)
+  ansible.builtin.shell:
+    cmd: |
+      yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  when: ansible_os_family == 'RedHat'
+  changed_when: false
+  tags: docker
+
+- name: Install docker (RedHat / Centos)
+  ansible.builtin.yum:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+  when: ansible_os_family == 'RedHat'
+  tags: docker
+
+- name: Add username | default('vagrant') to group docker
+  ansible.builtin.user:
+    name: "{{ username | default('vagrant')}}"
+    groups: docker
+    append: true
+  notify: restart_node
+  tags: docker
+
+- name: Enable and start docker service
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+  tags: docker

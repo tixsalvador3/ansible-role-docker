@@ -1,8 +1,10 @@
 ---
 - name: Gather variables (Debian / Ubuntu)
   ansible.builtin.shell:
-  cmd: |
-    dpkg --print-architecture
+    cmd: |
+      set -o pipefail
+      dpkg --print-architecture
+    executable: /bin/bash
   register: archi
   when: ansible_os_family == 'Debian'
   changed_when: false
@@ -10,8 +12,10 @@
 
 - name: Gather variables (Debian / Ubuntu)
   ansible.builtin.shell:
-  cmd: |
-    lsb_release -i | awk  '{print $3}' | tr '[:upper:]' '[:lower:]'
+    cmd: |
+      set -o pipefail
+      lsb_release -i | awk  '{print $3}' | tr '[:upper:]' '[:lower:]'
+    executable: /bin/bash
   register: flavor
   when: ansible_os_family == 'Debian'
   changed_when: false
@@ -47,8 +51,12 @@
 
 - name: Add docker gpg key (Debian / Ubuntu)
   ansible.builtin.shell:
-    cmd: curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-  when: (ansible_os_family == 'Debian') and (gpg_file.stat.exists == False)
+    cmd: |
+      set -o pipefail
+      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    executable: /bin/bash
+# when: (ansible_os_family == 'Debian') and (gpg_file.stat.exists == False)
+  when: (ansible_os_family == 'Debian') and (not gpg_file.stat.exists)
   changed_when: false
   tags: docker
 
@@ -61,7 +69,9 @@
 
 - name: Add repository (Debian / Ubuntu)
   ansible.builtin.apt_repository:
-    repo: "deb [arch={{ archi.stdout }} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/{{ flavor.stdout }} {{ ansible_distribution_release }} stable"
+    repo: "deb [arch={{ archi.stdout }} signed-by=/etc/apt/keyrings/docker.gpg]
+      https://download.docker.com/linux/{{ flavor.stdout }}
+      {{ ansible_distribution_release }} stable"
     state: present
   when: ansible_os_family == 'Debian'
   tags: docker
@@ -79,7 +89,7 @@
   tags: docker
 
 - name: Install required packages (RedHat / Centos)
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name:
       - yum-utils
       - vim
@@ -90,13 +100,15 @@
 - name: Install docker repo (RedHat / Centos)
   ansible.builtin.shell:
     cmd: |
+      set -o pipefail
       yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+    executable: /bin/bash
   when: ansible_os_family == 'RedHat'
   changed_when: false
   tags: docker
 
 - name: Install docker (RedHat / Centos)
-  ansible.builtin.yum:
+  ansible.builtin.dnf:
     name:
       - docker-ce
       - docker-ce-cli
@@ -106,12 +118,11 @@
   when: ansible_os_family == 'RedHat'
   tags: docker
 
-- name: Add username | default('vagrant') to group docker
+- name: Add user to group docker
   ansible.builtin.user:
-    name: "{{ username | default('vagrant')}}"
+    name: "{{ username | default('vagrant') }}"
     groups: docker
     append: true
-  notify: restart_node
   tags: docker
 
 - name: Enable and start docker service

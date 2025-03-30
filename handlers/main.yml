@@ -1,4 +1,4 @@
 ---
-- name: restart_node
+- name: Restart_node
   ansible.builtin.reboot:
     test_command: uptime
